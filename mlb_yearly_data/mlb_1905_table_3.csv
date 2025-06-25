@@ -1,6 +1,4 @@
-0,1,2,3,4
-1905 National LeagueTeam Standings,,,,
-Team [Click for roster],Wins,Losses,WP,GB
+Team_[Click_for_roster],Wins,Losses,WP,GB
 New York Giants,105,48,.686,0
 Pittsburgh Pirates,96,57,.627,9
 Chicago Cubs,92,61,.601,13

@@ -40,7 +40,7 @@ def scrape_year_pages(driver, year_links_df):
         year = row["year"]
         url = row["url"]
         print(f"Scraping year: {year} → {url}")
-        
+
         try:
             driver.get(url)
             time.sleep(2)
@@ -57,18 +57,25 @@ def scrape_year_pages(driver, year_links_df):
                     if row_data:
                         table_rows.append(row_data)
 
-                if len(table_rows) > 1:
+                header, body = None, []
+
+                for i, row in enumerate(table_rows):
+                    if len(row) > 1 and all(cell.strip() for cell in row):
+                        header = row
+                        body = table_rows[i + 1:]
+                        break
+
+                if header and body:
                     try:
-                        if len(table_rows[0]) == len(table_rows[1]):
-                            df = pd.DataFrame(table_rows[1:], columns=table_rows[0])
-                        else:
-                            df = pd.DataFrame(table_rows)
-                        
-                        filename = f"{output_dir}/mlb_{year}_table{idx+1}.csv"
+                        df = pd.DataFrame(body, columns=header)
+                        df.columns = [col.strip().replace(" ", "_").replace("-", "_") for col in df.columns]
+                        filename = f"{output_dir}/mlb_{year}_table_{idx+1}.csv"
                         df.to_csv(filename, index=False)
-                        print(f"Saved table to {filename}")
+                        print(f"Saved {filename}")
                     except Exception as e:
                         print(f"Skipped malformed table {idx+1} for year {year}: {e}")
+                else:
+                    print(f"No valid header found in table {idx+1} for year {year}")
 
         except Exception as e:
             print(f"Failed to scrape {url}: {e}")

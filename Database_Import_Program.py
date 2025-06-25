@@ -1,47 +1,45 @@
 import os
 import pandas as pd
 import sqlite3
+from glob import glob
 
-def infer_dtype(series):
-    """Infer and return the SQLite-compatible dtype for a pandas Series."""
-    if pd.api.types.is_integer_dtype(series):
-        return "INTEGER"
-    elif pd.api.types.is_float_dtype(series):
-        return "REAL"
-    elif pd.api.types.is_datetime64_any_dtype(series):
-        return "DATETIME"
-    else:
-        return "TEXT"
-    
-def import_csvs_to_sqlite(csv_dir, db_path):
+def import_cleaned_csvs_to_sqlite(csv_dir, db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    for filename in os.listdir(csv_dir):
-        if filename.endswith(".csv"):
-            filepath = os.path.join(csv_dir, filename)
-            table_name = os.path.splitext(filename)[0]
+    cleaned_files = glob(os.path.join(csv_dir, "mlb_*_cleaned.csv"))
 
-            print(f"Importing {filename} into table `{table_name}`...")
+    for filepath in cleaned_files:
+        table_name = os.path.splitext(os.path.basename(filepath))[0]
+        print(f"Importing {os.path.basename(filepath)} into table {table_name}...")
 
-            try:
-                df = pd.read_csv(filepath)
+        df = pd.read_csv(filepath)
 
-                df.columns = [col.strip().replace(" ", "_").replace("-", "_") for col in df.columns]
+        # Optional column cleaning
+        df.columns = df.columns.str.strip().str.upper().str.replace(" ", "_").str.replace("-", "_")
+        df = df.loc[:, ~df.columns.duplicated()]
 
-                column_types = {col: infer_dtype(df[col]) for col in df.columns}
-                column_defs = ", ".join(f'"{col}" {dtype}' for col, dtype in column_types.items())
+        # Drop table if it already exists
+        cursor.execute(f"DROP TABLE IF EXISTS '{table_name}';")
 
-                cursor.execute(f"DROP TABLE IF EXISTS `{table_name}`;")
-                cursor.execute(f"CREATE TABLE `{table_name}` ({column_defs});")
+        # Create table SQL
+        col_defs = []
+        for col, dtype in zip(df.columns, df.dtypes):
+            if pd.api.types.is_integer_dtype(dtype):
+                sql_type = "INTEGER"
+            elif pd.api.types.is_float_dtype(dtype):
+                sql_type = "REAL"
+            else:
+                sql_type = "TEXT"
+            col_defs.append(f'"{col}" {sql_type}')
+        create_stmt = f"CREATE TABLE '{table_name}' ({', '.join(col_defs)});"
+        cursor.execute(create_stmt)
 
-                df.to_sql(table_name, conn, if_exists="replace", index=False)
-                print(f"{table_name} imported successfully.")
-            except Exception as e:
-                print(f"Failed to import {filename}: {e}")
+        # Insert data
+        df.to_sql(table_name, conn, if_exists='append', index=False)
 
+        print(f"Imported {len(df)} rows into {table_name}.")
+
+    conn.commit()
     conn.close()
     print("All CSV files imported into the database.")
-
-if __name__ == "__main__":
-    import_csvs_to_sqlite(csv_dir="mlb_yearly_data", db_path="mlb_history.db")
